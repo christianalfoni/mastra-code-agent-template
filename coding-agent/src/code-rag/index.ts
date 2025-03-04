@@ -1,12 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "path";
-import {
-  Document,
-  VectorStoreIndex,
-  storageContextFromDefaults,
-  QueryEngineTool,
-  RetrieverQueryEngine,
-} from "llamaindex";
+import { Document, VectorStoreIndex, RetrieverQueryEngine } from "llamaindex";
+import { OpenAIEmbedding } from "@llamaindex/openai";
 import { QdrantVectorStore } from "@llamaindex/qdrant";
 import { getAllFilePaths } from "./utils.js";
 import { SerialQueue } from "./SerialQueue.js";
@@ -17,7 +12,7 @@ import { openai } from "@ai-sdk/openai";
 export class CodeRAG {
   constructor(
     private queryEngine: RetrieverQueryEngine,
-    public allFilePaths: string[]
+    public allFilePaths: string[],
   ) {}
   async query(query: string) {
     const result = await this.queryEngine.query({
@@ -31,21 +26,20 @@ export class CodeRAG {
 
     const vectorStore = new QdrantVectorStore({
       url: "http://localhost:6333",
+      embeddingModel: new OpenAIEmbedding(),
     });
 
-    const storageContext = await storageContextFromDefaults({
-      vectorStore,
-    });
+    const index = await VectorStoreIndex.fromVectorStore(vectorStore);
 
-    let index: VectorStoreIndex;
+    // Temp
+    // await vectorStore.client().deleteCollection(vectorStore.collectionName);
 
+    const collection = await vectorStore
+      .client()
+      .collectionExists(vectorStore.collectionName);
     const filesToEmbed = await getAllFilePaths(workspacePath);
 
-    try {
-      index = await VectorStoreIndex.init({
-        storageContext,
-      });
-    } catch (error) {
+    if (!collection.exists) {
       const queue = new SerialQueue();
       const documents: Document[] = [];
 
@@ -79,7 +73,6 @@ path: "${filepath}"
 type: "file"
 ---
 ${summary}`,
-            id_: filepath,
             metadata: {
               filepath: filepath,
               type: "file",
@@ -96,7 +89,7 @@ ${summary}`,
 
       async function createDirectoryDocument(
         directorypath: string,
-        summaries: string[]
+        summaries: string[],
       ) {
         return queue.add(async () => {
           const summary =
@@ -111,7 +104,6 @@ path: "${directorypath}"
 type: "directory"
 ---
 ${summary}`,
-            id_: directorypath,
             metadata: {
               filepath: directorypath,
               type: "directory",
@@ -132,13 +124,11 @@ ${summary}`,
         async (directorypath, results) =>
           createDirectoryDocument(
             directorypath || "$ROOT",
-            results.map((result) => result.summary)
-          )
+            results.map((result) => result.summary),
+          ),
       );
 
-      index = await VectorStoreIndex.fromDocuments(documents, {
-        storageContext,
-      });
+      await index.insertNodes(documents);
     }
 
     const queryEngine = await index.asQueryEngine();

@@ -13,10 +13,13 @@
   "type": "module",
   "dependencies": {
     "@ai-sdk/openai": "^1.2.0",
+    "@llamaindex/openai": "^0.1.57",
     "@llamaindex/qdrant": "^0.1.5",
     "@mastra/core": "^0.4.4",
+    "@mastra/memory": "^0.1.7",
     "@mastra/qdrant": "^0.1.7",
     "@mastra/rag": "^0.1.7",
+    "chokidar": "^4.0.3",
     "gitignore-globs": "^0.1.1",
     "glob": "^10.4.5",
     "llamaindex": "^0.9.6",
