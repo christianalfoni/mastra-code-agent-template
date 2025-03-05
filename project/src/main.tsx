@@ -4,6 +4,7 @@ import App from "./App";
 import { AuthProvider } from "./AuthContext";
 
 import "./index.css";
+import './firebase'
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
