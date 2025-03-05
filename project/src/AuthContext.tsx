@@ -55,15 +55,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setUser(currentUser);
 
         try {
-          // Check if user has tenant claims
-          const idTokenResult = await currentUser.getIdTokenResult();
-          const hasClaims =
-            idTokenResult.claims.tenantId && idTokenResult.claims.projectId;
-
-          if (hasClaims) {
-            setTenantId(idTokenResult.claims.tenantId as string);
-            setProjectId(idTokenResult.claims.projectId as string);
-          } else {
+      
+ 
             // Call the Cloud Function to set tenant claims
             const setTenantClaimFn = httpsCallable(functions, "setTenantClaim");
             const result = await setTenantClaimFn();
@@ -87,7 +80,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 newTokenResult.claims
               );
             }
-          }
+ 
         } catch (err) {
           console.error("Error processing authentication:", err);
           setError("Failed to set tenant permissions. Please try again.");
