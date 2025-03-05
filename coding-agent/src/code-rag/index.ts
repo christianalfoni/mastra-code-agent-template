@@ -20,7 +20,7 @@ import { generateText } from "ai";
 import { FSWatcher, watch } from "chokidar";
 import { debounce } from "ts-debounce";
 import { v5 } from "uuid";
-import ignore from 'ignore';
+import ignore from "ignore";
 
 async function getSummary(prompt: string) {
   const { text: summary } = await generateText({
@@ -64,7 +64,7 @@ ${summary}`,
       parentPath: dirname(path),
       path,
       type: "file",
-      text: summary
+      text: summary,
     },
   });
 
@@ -91,7 +91,7 @@ ${summary}`,
       parentPath: dirname(path),
       path,
       type: "directory",
-      text: summary
+      text: summary,
     },
   });
 
@@ -114,8 +114,6 @@ export class CodeRAG {
   }
 
   private createFileWatcher() {
-    
-
     const changes = {
       added: [] as string[],
       changed: [] as string[],
@@ -147,24 +145,26 @@ export class CodeRAG {
       console.log("Updating directories!", directories);
 
       for (const directorypath of directories) {
-        const result = await this.vectorStore.client().scroll(this.vectorStore.collectionName, {
-          filter: {
-            must: [
-              {
-                key: "parentPath",
-                match: { value: directorypath },
-              },
-              {
-                key: "type",
-                match: { value: 'file' }
-              }
-            ],
-          },
-        });
-        
+        const result = await this.vectorStore
+          .client()
+          .scroll(this.vectorStore.collectionName, {
+            filter: {
+              must: [
+                {
+                  key: "parentPath",
+                  match: { value: directorypath },
+                },
+                {
+                  key: "type",
+                  match: { value: "file" },
+                },
+              ],
+            },
+          });
 
-
-        const summaries = result.points.map((point) => point.payload!["text"] as string);
+        const summaries = result.points.map(
+          (point) => point.payload!["text"] as string
+        );
         const document = await createDirectoryDocument(
           directorypath,
           summaries
@@ -175,15 +175,18 @@ export class CodeRAG {
       this.index.insertNodes(documents);
     }, 15_000);
 
-    const gitIgnoreGlobs = getGitIgnoreGlobs(this.workspacePath)
+    const gitIgnoreGlobs = getGitIgnoreGlobs(this.workspacePath);
     const ig = ignore().add(gitIgnoreGlobs);
 
     console.log("Watching", this.workspacePath, gitIgnoreGlobs);
 
     return watch(this.workspacePath, {
-      ignored: (filePath) => filePath === this.workspacePath ? false : ig.ignores(relative(this.workspacePath, filePath)),
+      ignored: (filePath) =>
+        filePath === this.workspacePath
+          ? false
+          : ig.ignores(relative(this.workspacePath, filePath)),
       persistent: true,
-      ignoreInitial: true
+      ignoreInitial: true,
     })
       .on("add", async (filepath) => {
         const relativePath = relative(this.workspacePath, filepath);
@@ -194,7 +197,7 @@ export class CodeRAG {
       .on("change", async (filepath) => {
         const relativePath = relative(this.workspacePath, filepath);
 
-        console.log("Gotz change!")
+        console.log("Gotz change!");
 
         changes.changed.push(relativePath);
         flush();
@@ -229,15 +232,14 @@ export class CodeRAG {
 
     const index = await VectorStoreIndex.fromVectorStore(vectorStore);
 
-    // Temp
-    // await vectorStore.client().deleteCollection(vectorStore.collectionName);
+    if (false) {
+      await vectorStore.client().deleteCollection(vectorStore.collectionName);
+    }
 
     const collection = await vectorStore
       .client()
       .collectionExists(vectorStore.collectionName);
     const filesToEmbed = await getAllFilePaths(workspacePath);
-
-    
 
     if (!collection.exists) {
       const documents: Document[] = [];
