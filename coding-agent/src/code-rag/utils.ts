@@ -3,32 +3,26 @@ import parseGitignore from "gitignore-globs";
 import { glob } from "glob";
 import * as path from "path";
 import * as fs from "node:fs";
+import { dirname } from "node:path";
 
-export const defaultIgnores = [
-  "dist/**/*",
-  "**/*.log",
-  "**/*.lock",
-  "**/*-lock.json",
-  "**/node_modules/**/*",
-  "**/*.timestamp-*",
-  // We ignore root json files
-  "*.json",
-];
-export const docExtensions = [".md", ".mdx"];
-export const codeExtensions = [
-  ".js",
-  ".cjs",
-  ".mjs",
-  ".json",
-  ".html",
-  ".css",
-  ".rules",
-  ".vue",
-  ".firebaserc",
-  ".rules",
-];
+export function getDirectoriesFromFilePaths(filePaths: string[]): string[] {
+  const affectedDirectoriesSet = new Set<string>();
+  for (const filePath of filePaths) {
+    let currentDir = dirname(filePath);
+    while (currentDir && currentDir !== ".") {
+      affectedDirectoriesSet.add(currentDir);
+      const parentDir = dirname(currentDir);
+      if (parentDir === currentDir) break;
+      currentDir = parentDir;
+    }
+  }
 
-export function getGitIgnoreGlobs(workspacePath: string) {
+  return Array.from(affectedDirectoriesSet).sort(
+    (a, b) => b.split("/").length - a.split("/").length
+  );
+}
+
+export function getGitIgnoreGlobs(workspacePath: string): string[] {
   try {
     return parseGitignore(path.join(workspacePath, ".gitignore"));
   } catch {
@@ -37,9 +31,7 @@ export function getGitIgnoreGlobs(workspacePath: string) {
 }
 
 export function getIgnoreGlobs(workspacePath: string) {
-  const gitignoreGlobs = getGitIgnoreGlobs(workspacePath);
-
-  return defaultIgnores.concat(gitignoreGlobs);
+  return getGitIgnoreGlobs(workspacePath);
 }
 
 export async function getAllFilePaths(workspacePath: string) {
@@ -52,18 +44,7 @@ export async function getAllFilePaths(workspacePath: string) {
     cwd: workspacePath,
   });
 
-  return files.filter(async (filepath) => {
-    const extension = path.extname(filepath);
-
-    if (
-      !codeExtensions.includes(extension) &&
-      !docExtensions.includes(extension)
-    ) {
-      return false;
-    }
-
-    return true;
-  });
+  return files;
 }
 
 export interface Event<T> {
