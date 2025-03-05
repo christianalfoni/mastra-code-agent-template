@@ -22,6 +22,7 @@
     "chokidar": "^4.0.3",
     "gitignore-globs": "^0.1.1",
     "glob": "^10.4.5",
+    "ignore": "^7.0.3",
     "llamaindex": "^0.9.6",
     "mastra": "^0.2.8",
     "ts-debounce": "^4.0.0",

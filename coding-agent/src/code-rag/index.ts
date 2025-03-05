@@ -1,5 +1,8 @@
 import * as fs from "node:fs/promises";
 import { join, relative, dirname } from "path";
+import { openai } from "@ai-sdk/openai";
+import { OpenAIEmbedding } from "@llamaindex/openai";
+import { QdrantVectorStore } from "@llamaindex/qdrant";
 import {
   Document,
   VectorStoreIndex,
@@ -7,18 +10,17 @@ import {
   VectorStoreQueryMode,
   MetadataMode,
 } from "llamaindex";
-import { OpenAIEmbedding } from "@llamaindex/openai";
-import { QdrantVectorStore } from "@llamaindex/qdrant";
 import {
   getAllFilePaths,
   getDirectoriesFromFilePaths,
   getGitIgnoreGlobs,
 } from "./utils.js";
 import { generateText } from "ai";
-import { openai } from "@ai-sdk/openai";
+
 import { FSWatcher, watch } from "chokidar";
 import { debounce } from "ts-debounce";
 import { v5 } from "uuid";
+import ignore from 'ignore';
 
 async function getSummary(prompt: string) {
   const { text: summary } = await generateText({
@@ -62,6 +64,7 @@ ${summary}`,
       parentPath: dirname(path),
       path,
       type: "file",
+      text: summary
     },
   });
 
@@ -88,6 +91,7 @@ ${summary}`,
       parentPath: dirname(path),
       path,
       type: "directory",
+      text: summary
     },
   });
 
@@ -110,7 +114,7 @@ export class CodeRAG {
   }
 
   private createFileWatcher() {
-    const watchPath = join(this.workspacePath, "**/*");
+    
 
     const changes = {
       added: [] as string[],
@@ -119,7 +123,6 @@ export class CodeRAG {
     };
 
     const flush = debounce(async () => {
-      console.log("FLUSHING!");
       const changed = changes.added.concat(changes.changed);
       const unlinked = changes.unlinked.slice();
 
@@ -128,6 +131,8 @@ export class CodeRAG {
       changes.unlinked = [];
 
       const documents: Document[] = [];
+
+      console.log("FLUSHING!", changed, unlinked);
 
       for (const filepath of changed) {
         documents.push(await createFileDocument(this.workspacePath, filepath));
@@ -139,22 +144,27 @@ export class CodeRAG {
 
       const directories = getDirectoriesFromFilePaths(changed.concat(unlinked));
 
+      console.log("Updating directories!", directories);
+
       for (const directorypath of directories) {
-        const result = await this.vectorStore.query({
-          mode: VectorStoreQueryMode.DEFAULT,
-          similarityTopK: 1,
-          filters: {
-            filters: [
+        const result = await this.vectorStore.client().scroll(this.vectorStore.collectionName, {
+          filter: {
+            must: [
               {
                 key: "parentPath",
-                value: directorypath,
-                operator: "==",
+                match: { value: directorypath },
               },
+              {
+                key: "type",
+                match: { value: 'file' }
+              }
             ],
           },
         });
-        const docs = result.nodes || [];
-        const summaries = docs.map((doc) => doc.getContent(MetadataMode.NONE));
+        
+
+
+        const summaries = result.points.map((point) => point.payload!["text"] as string);
         const document = await createDirectoryDocument(
           directorypath,
           summaries
@@ -165,9 +175,15 @@ export class CodeRAG {
       this.index.insertNodes(documents);
     }, 15_000);
 
-    return watch(watchPath, {
-      ignored: getGitIgnoreGlobs(this.workspacePath),
+    const gitIgnoreGlobs = getGitIgnoreGlobs(this.workspacePath)
+    const ig = ignore().add(gitIgnoreGlobs);
+
+    console.log("Watching", this.workspacePath, gitIgnoreGlobs);
+
+    return watch(this.workspacePath, {
+      ignored: (filePath) => filePath === this.workspacePath ? false : ig.ignores(relative(this.workspacePath, filePath)),
       persistent: true,
+      ignoreInitial: true
     })
       .on("add", async (filepath) => {
         const relativePath = relative(this.workspacePath, filepath);
@@ -177,6 +193,8 @@ export class CodeRAG {
       })
       .on("change", async (filepath) => {
         const relativePath = relative(this.workspacePath, filepath);
+
+        console.log("Gotz change!")
 
         changes.changed.push(relativePath);
         flush();
@@ -218,6 +236,8 @@ export class CodeRAG {
       .client()
       .collectionExists(vectorStore.collectionName);
     const filesToEmbed = await getAllFilePaths(workspacePath);
+
+    
 
     if (!collection.exists) {
       const documents: Document[] = [];
