@@ -9,6 +9,7 @@ import {
   RetrieverQueryEngine,
   VectorStoreQueryMode,
   MetadataMode,
+  VectorIndexRetriever,
 } from "llamaindex";
 import {
   getAllFilePaths,
@@ -43,7 +44,11 @@ async function createFileDocument(workspacePath: string, path: string) {
   let summary: string;
   // TODO: This can be improved by checking the file extension or like a ratio of spaces VS length
   if (content.length > 50_000) {
-    summary = "File too large to summarize";
+    summary = `---
+path: "${path}"
+type: "file"
+---
+File too large to summarize`;
   } else {
     summary = await getSummary(`This is the content of a file:
 \`\`\`
@@ -68,7 +73,7 @@ ${summary}`,
     },
   });
 
-  console.log("## RESOLVED FILE", summary);
+  console.log("## RESOLVED FILE", dirname(path), path);
 
   return document;
 }
@@ -88,14 +93,14 @@ type: "directory"
 ---
 ${summary}`,
     metadata: {
-      parentPath: dirname(path),
+      parentPath: path === "." ? undefined : dirname(path),
       path,
       type: "directory",
       text: summary,
     },
   });
 
-  console.log("## RESOLVED DIRECTORY", summary);
+  console.log("## RESOLVED DIRECTORY", dirname(path), path, summary);
 
   return document;
 }
@@ -104,7 +109,7 @@ export class CodeRAG {
   private watcher: FSWatcher;
 
   constructor(
-    private queryEngine: RetrieverQueryEngine,
+    private queryEngine: VectorIndexRetriever,
     public allFilePaths: string[],
     private workspacePath: string,
     private vectorStore: QdrantVectorStore,
@@ -115,18 +120,20 @@ export class CodeRAG {
 
   private createFileWatcher() {
     const changes = {
-      added: [] as string[],
-      changed: [] as string[],
-      unlinked: [] as string[],
+      added: new Set<string>(),
+      changed: new Set<string>(),
+      unlinked: new Set<string>(),
     };
 
     const flush = debounce(async () => {
-      const changed = changes.added.concat(changes.changed);
-      const unlinked = changes.unlinked.slice();
+      const changed = Array.from(changes.added).concat(
+        Array.from(changes.changed)
+      );
+      const unlinked = Array.from(changes.unlinked);
 
-      changes.added = [];
-      changes.changed = [];
-      changes.unlinked = [];
+      changes.added.clear();
+      changes.changed.clear();
+      changes.unlinked.clear();
 
       const documents: Document[] = [];
 
@@ -137,7 +144,11 @@ export class CodeRAG {
       }
 
       for (const filepath of unlinked) {
-        await this.index.deleteRefDoc(v5(filepath, v5.URL), true);
+        await this.vectorStore
+          .client()
+          .delete(this.vectorStore.collectionName, {
+            points: [v5(filepath, v5.URL)],
+          });
       }
 
       const directories = getDirectoriesFromFilePaths(changed.concat(unlinked));
@@ -191,7 +202,7 @@ export class CodeRAG {
       .on("add", async (filepath) => {
         const relativePath = relative(this.workspacePath, filepath);
 
-        changes.added.push(relativePath);
+        changes.added.add(relativePath);
         flush();
       })
       .on("change", async (filepath) => {
@@ -199,23 +210,44 @@ export class CodeRAG {
 
         console.log("Gotz change!");
 
-        changes.changed.push(relativePath);
+        changes.changed.add(relativePath);
         flush();
       })
       .on("unlink", async (filepath) => {
         const relativePath = relative(this.workspacePath, filepath);
 
-        changes.unlinked.push(relativePath);
+        changes.unlinked.add(relativePath);
         flush();
       });
   }
 
   async query(query: string) {
-    const result = await this.queryEngine.query({
+    const result = await this.queryEngine.retrieve({
       query,
     });
 
-    return result.message;
+    return result;
+  }
+
+  async readdir(directorypath: string) {
+    const result = await this.vectorStore
+      .client()
+      .scroll(this.vectorStore.collectionName, {
+        filter: {
+          must: [
+            {
+              key: "parentPath",
+              match: { value: directorypath || "." },
+            },
+          ],
+        },
+      });
+
+    return result.points.map((point) => ({
+      path: point.payload!["path"] as string,
+      summary: point.payload!["text"] as string,
+      type: point.payload!["type"] as string,
+    }));
   }
 
   dispose() {
@@ -268,7 +300,7 @@ export class CodeRAG {
       await index.insertNodes(documents);
     }
 
-    const queryEngine = await index.asQueryEngine();
+    const queryEngine = await index.asRetriever();
 
     return new CodeRAG(
       queryEngine,

@@ -12,54 +12,20 @@ const memory = new Memory({
 export const codeAgent = new Agent({
   name: "Code Agent",
   instructions: `
-      You are a helpful code assistant that has access to the project code.
+      You are an engineer that implements code for an application. 
 
-      When prompted to make changes to the code, query the code to find relevant files to read and write to.
+Respect the following flow:
 
-      The project uses Firebase. All authenticated users has a "projectId" which can be used to manage
-      collection within the following rules:
+1. Always read the root directory and keep reading relevant directories until you have enough context to act on the requested change from the user
+2. Use read and write file tools to apply changes to the application
+3. Never read or write firebase rules. Rather follow this convention:
+  - All collections must start with "/projects/$projectId" to target the root project in Firebase. The projectId is available on the authentication context
+  - Add documents to any collection with a "userId" key to let the user own that document
+  - Optionally add "access_control" key to the document to control who else has access:
+    - "access_control.read": Use true to allow anyone to read the document or insert UID of other users
+    - "access_control.write": Use true to allow anyone to write the document or insert UID of other users
 
-      rules_version = '2';
-
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Updated rules for projects/{projectId}
-    match /projects/{projectId} {
-      // Helper functions
-      function isProjectUser() {
-        return request.auth.token.projectId == projectId;
-      }
-      function ownerMatches() {
-        // Changed to use keys().hasAny
-        return resource.data.keys().hasAny(['userId']) && request.auth.uid == resource.data.userId;
-      }
-      function accessAllowed(action) {
-        // Changed to use keys().hasAny
-        return resource.data.keys().hasAny(['access_control']) && (
-          (resource.data.access_control[action] is bool && resource.data.access_control[action] == true) ||
-          (resource.data.access_control[action] is list && request.auth.uid in resource.data.access_control[action])
-        );
-      }
-      function canRead() {
-        return request.auth != null && isProjectUser() && (ownerMatches() || accessAllowed('read'));
-      }
-      function canWrite() {
-        return request.auth != null && isProjectUser() && (ownerMatches() || accessAllowed('write'));
-      }
-      
-      // Use rules based on helper functions
-      allow read: if canRead();
-      allow write: if canWrite();
-    }
-    
-    // Unchanged catch-all rule remains
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-
-
+You will always implement on behalf of the user, the user does not know how to code.
 `,
   model: openai("gpt-4o"),
   tools: { queryCode, readFile, writeFile },

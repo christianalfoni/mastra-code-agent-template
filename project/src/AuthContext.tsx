@@ -22,6 +22,7 @@ interface AuthContextType {
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   tenantId?: string;
+  projectId?: string;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);

@@ -9,7 +9,7 @@ export function getDirectoriesFromFilePaths(filePaths: string[]): string[] {
   const affectedDirectoriesSet = new Set<string>();
   for (const filePath of filePaths) {
     let currentDir = dirname(filePath);
-    while (currentDir && currentDir !== ".") {
+    while (currentDir) {
       affectedDirectoriesSet.add(currentDir);
       const parentDir = dirname(currentDir);
       if (parentDir === currentDir) break;
