@@ -12,6 +12,7 @@
   "description": "",
   "type": "module",
   "dependencies": {
+    "@ai-sdk/anthropic": "^1.1.14",
     "@ai-sdk/openai": "^1.2.0",
     "@llamaindex/openai": "^0.1.57",
     "@llamaindex/qdrant": "^0.1.5",

@@ -2,7 +2,18 @@ import { CodeRAG } from "../../code-rag";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import * as fs from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
+
+export function writeToNestedFolder(filePath: string, content: string): void {
+  const folderPath = dirname(filePath);
+
+  // Create nested directories if they don't exist
+  fs.mkdirSync(folderPath, { recursive: true });
+
+  // Write content to the file
+  fs.writeFileSync(filePath, content);
+}
+
 
 const PROJECT_PATH = "/project/workspace/project";
 
@@ -27,7 +38,7 @@ export const writeFile = createTool({
   }),
   outputSchema: z.string(),
   async execute({ context }) {
-    await fs.promises.writeFile(getProjectPath(context.path), context.content);
+    writeToNestedFolder(getProjectPath(context.path), context.content);
 
     return "OK";
   },

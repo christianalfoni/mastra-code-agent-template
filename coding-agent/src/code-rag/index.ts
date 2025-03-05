@@ -1,14 +1,12 @@
 import * as fs from "node:fs/promises";
 import { join, relative, dirname } from "path";
 import { openai } from "@ai-sdk/openai";
+
 import { OpenAIEmbedding } from "@llamaindex/openai";
 import { QdrantVectorStore } from "@llamaindex/qdrant";
 import {
   Document,
   VectorStoreIndex,
-  RetrieverQueryEngine,
-  VectorStoreQueryMode,
-  MetadataMode,
   VectorIndexRetriever,
 } from "llamaindex";
 import {
